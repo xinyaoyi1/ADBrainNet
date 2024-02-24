@@ -1,0 +1,121 @@
+from tensorflow.keras.models import Model, Sequential
+from keras.models import load_model, Sequential
+from keras.preprocessing import image
+import numpy as np
+import os
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten, Dropout, BatchNormalization, MaxPool2D, GlobalAveragePooling2D
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.preprocessing import image
+from tensorflow import keras
+from tensorflow.keras import optimizers, losses, metrics
+import tensorflow_addons as tfa
+
+base_dir = '/content/drive/My Drive/Colab Notebooks/brain mri/latest dataset1/'
+training_dir = os.path.join(base_dir,'training')
+validation_dir = os.path.join(base_dir,'validation')
+test_dir = os.path.join(base_dir,'test')
+
+#training set
+training_ADHD_Combined_dir = os.path.join(training_dir,'ADHD-Combined')
+training_ADHD_Hyperactive_dir = os.path.join(training_dir,'ADHD-Hyperactive')
+training_ADHD_Inattentive_dir = os.path.join(training_dir,'ADHD-Inattentive')
+training_Autism_dir = os.path.join(training_dir,'Autism')
+
+#validation set
+validation_ADHD_Combined_dir = os.path.join(validation_dir,'ADHD-Combined')
+validation_ADHD_Hyperactive_dir = os.path.join(validation_dir,'ADHD-Hyperactive')
+validation_ADHD_Inattentive_dir = os.path.join(validation_dir,'ADHD-Inattentive')
+validation_Autism_dir = os.path.join(validation_dir,'Autism')
+
+#testing set
+test_ADHD_Combined_dir = os.path.join(test_dir,'ADHD-Combined')
+test_ADHD_Hyperactive_dir = os.path.join(test_dir,'ADHD-Hyperactive')
+test_ADHD_Inattentive_dir = os.path.join(test_dir,'ADHD-Inattentive')
+test_Autism_dir = os.path.join(test_dir,'Autism')
+
+model = Sequential()
+# First convolution layer
+model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(64, 64, 3)))
+model.add(MaxPooling2D((2, 2)))
+model.add(Dropout(0.25))
+
+# Second concolution layer
+model.add(Conv2D(128, (3, 3), activation='relu'))
+model.add(MaxPooling2D((2, 2)))
+model.add(Dropout(0.25))
+
+# Third convolution layer
+model.add(Conv2D(256, (3, 3), activation='relu'))
+model.add(MaxPooling2D((2, 2)))
+model.add(Dropout(0.25))
+
+# Fourth convolution layer
+model.add(Conv2D(512, (3, 3), activation='relu'))
+model.add(MaxPooling2D((2, 2)))
+model.add(Dropout(0.25))
+
+# Last convolution layer
+model.add(Conv2D(1024, (1, 1), activation='relu'))
+model.add(MaxPooling2D((2, 2)))
+model.add(Dropout(0.25))
+
+# Flatten
+model.add(Flatten())
+
+# fully connected layer
+model.add(Dense(256, activation='relu'))
+
+model.add(Dropout(0.5))
+model.add(Dense(4, activation='softmax'))
+
+model.summary()
+
+train_datagen = ImageDataGenerator(rescale = 1./255)
+validation_datagen = ImageDataGenerator(rescale = 1./255)
+test_datagen = ImageDataGenerator(rescale = 1./255)
+
+from google.colab import drive
+#Connect to Google Drive
+drive.mount('/content/drive')
+
+train_generator = train_datagen.flow_from_directory(
+        training_dir,
+        target_size = (64,64),
+        batch_size = 64,
+        class_mode = 'categorical',
+        shuffle=True)
+
+validation_generator = validation_datagen.flow_from_directory(
+        validation_dir,
+        target_size = (64,64),
+        batch_size = 64,
+        class_mode = 'categorical')
+
+test_generator = test_datagen.flow_from_directory(
+        test_dir,
+        target_size = (64,64),
+        batch_size = 64,
+        class_mode = 'categorical')
+  
+model.compile(optimizer=optimizers.Adam(),
+              loss=losses.categorical_crossentropy,
+              metrics=[metrics.CategoricalAccuracy(), metrics.Precision(), metrics.Recall(), tfa.metrics.F1Score(num_classes=4)]
+              )
+
+#batch size*steps
+history = model.fit_generator(
+      train_generator,
+      steps_per_epoch = 40,
+      epochs = 100,
+      validation_data = validation_generator,
+      validation_steps = 10,
+      verbose = 2)
+
+
+
+
+
+
