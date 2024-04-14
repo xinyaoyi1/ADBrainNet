@@ -13,7 +13,7 @@ from tensorflow import keras
 from tensorflow.keras import optimizers, losses, metrics
 import tensorflow_addons as tfa
 
-base_dir = '/content/drive/My Drive/Colab Notebooks/brain mri/latest dataset1/'
+base_dir = '/content/drive/My Drive/Colab Notebooks/your path/'
 training_dir = os.path.join(base_dir,'training')
 validation_dir = os.path.join(base_dir,'validation')
 test_dir = os.path.join(base_dir,'test')
