@@ -1,75 +1,134 @@
-from tensorflow.keras.models import Model, Sequential
-from keras.models import load_model, Sequential
-from keras.preprocessing import image
-import numpy as np
-import os
 import tensorflow as tf
+import numpy as np
+import random
+import os
+import warnings
+warnings.filterwarnings("ignore")
+from tensorflow.keras.models import Model
+from keras.models import load_model
+from keras.preprocessing import image
 from tensorflow.keras import layers, models
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten, Dropout, BatchNormalization, MaxPool2D, GlobalAveragePooling2D
+from tensorflow.keras.layers import Dense,Flatten,BatchNormalization, MaxPool2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.preprocessing import image
 from tensorflow import keras
-from tensorflow.keras import optimizers, losses, metrics
-import tensorflow_addons as tfa
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from keras.models import load_model
+from keras.preprocessing import image
+from tensorflow.keras import layers, Model
+from tensorflow.keras import layers, models
+from tensorflow.keras.layers import Dense,Flatten,BatchNormalization, MaxPool2D
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from keras.callbacks import Callback
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Multiply, Layer
 
-base_dir = '/content/drive/My Drive/Colab Notebooks/your path/'
+seed = 42
+tf.random.set_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
+
+base_dir = '/content/drive/My Drive/your path/'
 training_dir = os.path.join(base_dir,'training')
 validation_dir = os.path.join(base_dir,'validation')
-test_dir = os.path.join(base_dir,'test')
+testing_dir = os.path.join(base_dir,'testing')
 
-#training set
 training_ADHD_Combined_dir = os.path.join(training_dir,'ADHD-Combined')
 training_ADHD_Hyperactive_dir = os.path.join(training_dir,'ADHD-Hyperactive')
 training_ADHD_Inattentive_dir = os.path.join(training_dir,'ADHD-Inattentive')
 training_Autism_dir = os.path.join(training_dir,'Autism')
+training_typical_develope_dir = os.path.join(training_dir,'typical-develope')
 
-#validation set
 validation_ADHD_Combined_dir = os.path.join(validation_dir,'ADHD-Combined')
 validation_ADHD_Hyperactive_dir = os.path.join(validation_dir,'ADHD-Hyperactive')
 validation_ADHD_Inattentive_dir = os.path.join(validation_dir,'ADHD-Inattentive')
 validation_Autism_dir = os.path.join(validation_dir,'Autism')
+validation_typical_develope_dir = os.path.join(validation_dir,'typical-develope')
 
-#testing set
-test_ADHD_Combined_dir = os.path.join(test_dir,'ADHD-Combined')
-test_ADHD_Hyperactive_dir = os.path.join(test_dir,'ADHD-Hyperactive')
-test_ADHD_Inattentive_dir = os.path.join(test_dir,'ADHD-Inattentive')
-test_Autism_dir = os.path.join(test_dir,'Autism')
+testing_ADHD_Combined_dir = os.path.join(testing_dir,'ADHD-Combined')
+testing_ADHD_Hyperactive_dir = os.path.join(testing_dir,'ADHD-Hyperactive')
+testing_ADHD_Inattentive_dir = os.path.join(testing_dir,'ADHD-Inattentive')
+testing_Autism_dir = os.path.join(testing_dir,'Autism')
+testing_typical_develope_dir = os.path.join(testing_dir,'typical-develope')
+
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from keras.regularizers import l2
+import keras.backend as K
+
+def squeeze_excite_block(input_tensor, ratio=16):
+    """
+    SENet block
+    Args:
+        input_tensor (keras.tensor): Input tensor
+        ratio (int): Reduction ratio
+    Returns:
+        keras.tensor: Output tensor
+    """
+    channel_axis = 1 if K.image_data_format() == "channels_first" else -1
+    channel_count = input_tensor.get_shape()[channel_axis]
+
+    se_feature = GlobalAveragePooling2D()(input_tensor)
+    se_feature = Dense(channel_count // ratio, activation='relu', kernel_regularizer=l2(1e-5), use_bias=False)(se_feature)
+    se_feature = Dense(channel_count, activation='sigmoid', kernel_regularizer=l2(1e-5), use_bias=False)(se_feature)
+    x = Multiply()([input_tensor, se_feature])
+    return x
+
+class SENetLayer(Layer):
+    def __init__(self, ratio=16, **kwargs):
+        super(SENetLayer, self).__init__(**kwargs)
+        self.ratio = ratio
+
+    def build(self, input_shape):
+        channel_axis = 1 if K.image_data_format() == "channels_first" else -1
+        channel_count = input_shape[channel_axis]
+
+        self.global_avg_pool = GlobalAveragePooling2D()
+        self.dense_1 = Dense(channel_count // self.ratio, activation='relu', kernel_regularizer=l2(1e-5), use_bias=False)
+        self.dense_2 = Dense(channel_count, activation='sigmoid', kernel_regularizer=l2(1e-5), use_bias=False)
+        self.multiply = Multiply()
+        super(SENetLayer, self).build(input_shape)
+
+    def call(self, inputs):
+        se_feature = self.global_avg_pool(inputs)
+        se_feature = self.dense_1(se_feature)
+        se_feature = self.dense_2(se_feature)
+        x = self.multiply([inputs, se_feature])
+        return x
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"ratio": self.ratio})
+        return config
 
 model = Sequential()
-# First convolution layer
-model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(64, 64, 3)))
-model.add(MaxPooling2D((2, 2)))
-model.add(Dropout(0.25))
 
-# Second concolution layer
-model.add(Conv2D(128, (3, 3), activation='relu'))
+model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(64, 64, 3), padding='same'))
 model.add(MaxPooling2D((2, 2)))
-model.add(Dropout(0.25))
+model.add(Dropout(0.5))
+model.add(SENetLayer())
 
-# Third convolution layer
-model.add(Conv2D(256, (3, 3), activation='relu'))
+model.add(Conv2D(128, (3, 3), activation='relu', padding='same'))
 model.add(MaxPooling2D((2, 2)))
-model.add(Dropout(0.25))
+model.add(Dropout(0.5))
 
-# Fourth convolution layer
-model.add(Conv2D(512, (3, 3), activation='relu'))
+model.add(Conv2D(256, (3, 3), activation='relu', padding='same'))
+model.add(BatchNormalization())
 model.add(MaxPooling2D((2, 2)))
-model.add(Dropout(0.25))
+model.add(Dropout(0.5))
 
-# Last convolution layer
-model.add(Conv2D(1024, (1, 1), activation='relu'))
-model.add(MaxPooling2D((2, 2)))
-model.add(Dropout(0.25))
+model.add(Conv2D(512, (3, 3), activation='relu', padding='same'))
+model.add(BatchNormalization())
+model.add(Dropout(0.5))
 
-# Flatten
 model.add(Flatten())
 
-# fully connected layer
-model.add(Dense(256, activation='relu'))
-
+model.add(Dense(512, activation='relu', kernel_regularizer=l2(0.05)))
 model.add(Dropout(0.5))
-model.add(Dense(4, activation='softmax'))
+
+model.add(Dense(5, activation='softmax')) 
 
 model.summary()
 
@@ -77,16 +136,11 @@ train_datagen = ImageDataGenerator(rescale = 1./255)
 validation_datagen = ImageDataGenerator(rescale = 1./255)
 test_datagen = ImageDataGenerator(rescale = 1./255)
 
-from google.colab import drive
-#Connect to Google Drive
-drive.mount('/content/drive')
-
 train_generator = train_datagen.flow_from_directory(
         training_dir,
         target_size = (64,64),
         batch_size = 64,
-        class_mode = 'categorical',
-        shuffle=True)
+        class_mode = 'categorical')
 
 validation_generator = validation_datagen.flow_from_directory(
         validation_dir,
@@ -95,27 +149,56 @@ validation_generator = validation_datagen.flow_from_directory(
         class_mode = 'categorical')
 
 test_generator = test_datagen.flow_from_directory(
-        test_dir,
+        testing_dir,
         target_size = (64,64),
         batch_size = 64,
         class_mode = 'categorical')
-  
+
+from tensorflow.keras import optimizers, losses, metrics
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+pip install tensorflow-addons
+import tensorflow as tf
+import tensorflow_addons as tfa
+from tensorflow.keras import optimizers, losses, metrics
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+
+initial_val_weights = {0: 3, 1: 10, 2: 3, 3: 1.4, 4: 1}
+
 model.compile(optimizer=optimizers.Adam(),
               loss=losses.categorical_crossentropy,
-              metrics=[metrics.CategoricalAccuracy(), metrics.Precision(), metrics.Recall(), tfa.metrics.F1Score(num_classes=4)]
+              metrics=[metrics.CategoricalAccuracy(), metrics.Precision(), metrics.Recall(), tfa.metrics.F1Score(num_classes=5)]
               )
 
-#batch size*steps
+class AdjustValidationClassWeights(Callback):
+    def __init__(self, validation_generator, new_weights, interval=5):
+        super(AdjustValidationClassWeights, self).__init__()
+        self.validation_generator = validation_generator
+        self.new_weights = new_weights
+        self.interval = interval
+        self.counter = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.counter += 1
+        if self.counter % self.interval == 0:
+            self.validation_generator.class_weights = self.new_weights
+            self.counter = 0
+
+class_weights = {0: 3, 1: 10, 2: 3, 3: 1.4, 4: 1}
+early_stopping = EarlyStopping(monitor='val_loss', patience=20, verbose=1, restore_best_weights=True)
+lr_reduction = ReduceLROnPlateau(monitor='val_loss', patience=10, verbose=1, factor=0.2)
+
+import math
+
 history = model.fit_generator(
       train_generator,
-      steps_per_epoch = 40,
-      epochs = 100,
+      class_weight = class_weights,
+      steps_per_epoch=math.ceil(train_generator.samples / train_generator.batch_size),
+      epochs = 200,
       validation_data = validation_generator,
-      validation_steps = 10,
-      verbose = 2)
-
-
-
-
-
+      validation_steps=math.ceil(validation_generator.samples / validation_generator.batch_size),
+      callbacks=[AdjustValidationClassWeights(validation_generator, initial_val_weights),lr_reduction,early_stopping], 
+      verbose = 2
+)
 
