@@ -15,7 +15,6 @@ import subprocess
 import tensorflow as tf
 import numpy as np
 import random
-import os
 import time
 import shutil
 import warnings
